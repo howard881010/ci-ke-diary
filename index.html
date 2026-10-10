@@ -103,6 +103,12 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .cal-foot { font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .tools { display: flex; gap: 10px; flex-wrap: wrap; }
 .tools .btn { padding: 9px 16px; font-size: 13px; }
+.strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.strip button { flex: 0 0 64px; aspect-ratio: 3 / 4; border: 0; padding: 0; border-radius: 8px; overflow: hidden; position: relative; background: var(--line); }
+.strip img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.strip span { position: absolute; left: 0; right: 0; bottom: 0; font-size: 10px; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.6)); padding: 6px 0 2px; text-align: center; font-variant-numeric: tabular-nums; }
+.day .c { position: absolute; right: 3px; bottom: 3px; font-size: 10px; font-weight: 700; line-height: 1.5; color: #fff; background: rgba(0,0,0,.6); border-radius: 999px; padding: 0 6px; font-variant-numeric: tabular-nums; }
+.vitem { display: grid; gap: 10px; }
 .empty { border: 1px dashed var(--line); border-radius: 14px; padding: 18px; font-size: 14px; color: var(--muted); }
 
 /* Camera: always dark, it is a viewfinder */
@@ -147,7 +153,7 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
 <body>
 <div class="wrap">
   <header>
-    <div class="brand">此刻 <small>每天一張，真實的生活</small></div>
+    <div class="brand">此刻 <small>隨手記下真實的生活</small></div>
     <div class="streak" title="連續記錄天數"><b id="streak">0</b> 天連續</div>
   </header>
 
@@ -226,12 +232,8 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
       <h3 id="vTitle"></h3>
       <button class="icon-btn" data-close aria-label="關閉">✕</button>
     </div>
-    <div id="vBody"></div>
-    <div class="row">
-      <button class="btn ghost grow" id="vSave">存成一張圖</button>
-      <button class="btn ghost" id="vRetake">重拍</button>
-      <button class="btn ghost" id="vDelete">刪除</button>
-    </div>
+    <div id="vBody" style="display:grid;gap:22px"></div>
+    <button class="btn" id="vMore">在這天再拍一張</button>
   </div>
 </div>
 
@@ -271,16 +273,28 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
   const store = (() => {
     let dbp = null;
     const open = () => dbp || (dbp = new Promise((res, rej) => {
-      const r = indexedDB.open("ciKe", 1);
-      r.onupgradeneeded = () => r.result.createObjectStore("posts", { keyPath: "date" });
+      const r = indexedDB.open("ciKe", 2);
+      r.onupgradeneeded = (e) => {
+        const db = r.result;
+        const shots = db.createObjectStore("shots", { keyPath: "id" });
+        shots.createIndex("date", "date");
+        // v1 kept one post per day; move each into the many-per-day store
+        if (e.oldVersion >= 1) {
+          r.transaction.objectStore("posts").openCursor().onsuccess = (ev) => {
+            const c = ev.target.result;
+            if (c) { shots.put({ ...c.value, id: `${c.value.date}-${c.value.postedAt || 0}` }); c.continue(); }
+            else db.deleteObjectStore("posts");
+          };
+        }
+      };
       r.onsuccess = () => res(r.result);
       r.onerror = () => rej(r.error);
     }));
     const tx = async (mode, fn) => {
       const db = await open();
       return new Promise((res, rej) => {
-        const t = db.transaction("posts", mode);
-        const out = fn(t.objectStore("posts"));
+        const t = db.transaction("shots", mode);
+        const out = fn(t.objectStore("shots"));
         t.oncomplete = () => res(out && out.result !== undefined ? out.result : undefined);
         t.onerror = () => rej(t.error);
         t.onabort = () => rej(t.error);
@@ -294,25 +308,37 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
   })();
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
-  let posts = new Map();
-  const urls = new Map(); // date -> {main, selfie}
+  const byId = new Map();   // id -> shot
+  let days = new Map();     // date -> shots, oldest first
+  const newId = (k) => `${k}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  function reindex() {
+    days = new Map();
+    for (const p of byId.values()) {
+      if (!days.has(p.date)) days.set(p.date, []);
+      days.get(p.date).push(p);
+    }
+    for (const list of days.values()) list.sort((a, b) => (a.postedAt || 0) - (b.postedAt || 0));
+  }
+  const urls = new Map(); // id -> {main, selfie}
   function urlFor(p) {
-    let u = urls.get(p.date);
+    let u = urls.get(p.id);
     if (!u || u.src !== p) {
       if (u) { URL.revokeObjectURL(u.main); if (u.selfie) URL.revokeObjectURL(u.selfie); }
       u = { src: p, main: URL.createObjectURL(p.main), selfie: p.selfie ? URL.createObjectURL(p.selfie) : null };
-      urls.set(p.date, u);
+      urls.set(p.id, u);
     }
     return u;
   }
-  function forget(k) {
-    const u = urls.get(k);
-    if (u) { URL.revokeObjectURL(u.main); if (u.selfie) URL.revokeObjectURL(u.selfie); urls.delete(k); }
+  function forget(id) {
+    const u = urls.get(id);
+    if (u) { URL.revokeObjectURL(u.main); if (u.selfie) URL.revokeObjectURL(u.selfie); urls.delete(id); }
   }
   async function load() {
     try {
       const list = await store.all();
-      posts = new Map(list.map((p) => [p.date, p]));
+      byId.clear();
+      list.forEach((p) => byId.set(p.id, p));
+      reindex();
     } catch {
       $("#storeNote").textContent = "這個瀏覽器不能存資料（可能是無痕模式）。照片會在關掉頁面後消失。";
     }
@@ -359,42 +385,50 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
     const k = keyOf(now);
     $("#todayLabel").textContent = `今天 · ${nice(k)}`;
     const body = $("#todayBody");
-    const p = posts.get(k);
-    if (p) {
-      const sig = k + p.postedAt;
-      if (body.dataset.shown === sig) return;
-      body.dataset.shown = sig;
-      body.innerHTML = `<div style="display:grid;gap:12px">
-        <div class="state done"><span class="dot"></span>今天記錄好了</div>
-        <button class="polaroid" id="todayPol">${polaroidHTML(p)}</button></div>`;
-      const pol = $("#todayPol");
-      fillCaption(pol, p.caption); wireSwap(pol);
-      pol.addEventListener("click", () => openViewer(k));
-      return;
+    if (!body.querySelector("#tMoment")) {
+      body.innerHTML = `<div style="display:grid;gap:16px"><div id="tMoment" style="display:grid;gap:12px;justify-items:start"></div><div id="tShots" style="display:grid;gap:12px"></div></div>`;
     }
-    body.dataset.shown = "";
+    const list = days.get(k) || [];
+    const n = list.length;
     const m = momentFor(k);
     const secLeft = m * 60 - (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds());
-    let state, clock, cta;
+    const again = `<button class="btn${n ? "" : " ghost"}" data-cap="${k}">${n ? "再拍一張" : "先拍也可以"}</button>`;
+    let html;
     if (secLeft > 0) {
       const h = Math.floor(secLeft / 3600), mi = Math.floor(secLeft % 3600 / 60), s = secLeft % 60;
-      clock = `${h ? h + ":" : ""}${pad(mi)}:${pad(s)}`;
-      state = `<div class="state"><span class="dot"></span>今天的時刻在 ${hm(m)}，還沒到</div>`;
-      cta = `<button class="btn ghost" data-cap="${k}">先拍也可以</button>`;
+      html = `<div class="state${n ? " done" : ""}"><span class="dot"></span>${n ? `今天拍了 ${n} 張 · ` : ""}時刻在 ${hm(m)}</div>
+        <div class="clock">${h ? h + ":" : ""}${pad(mi)}:${pad(s)}</div>${again}`;
     } else if (-secLeft < WINDOW_MIN * 60) {
       const left = WINDOW_MIN * 60 + secLeft;
-      clock = `${pad(Math.floor(left / 60))}:${pad(left % 60)}`;
-      state = `<div class="state live"><span class="dot"></span>就是現在！停下來拍一張</div>`;
-      cta = `<button class="btn" data-cap="${k}">打開相機</button>`;
+      html = `<div class="state live"><span class="dot"></span>就是現在！停下來拍一張</div>
+        <div class="clock">${pad(Math.floor(left / 60))}:${pad(left % 60)}</div>
+        <button class="btn" data-cap="${k}">打開相機</button>`;
       notifyOnce(k);
+    } else if (n) {
+      html = `<div class="state done"><span class="dot"></span>今天拍了 ${n} 張</div>${again}`;
     } else {
-      clock = hm(m);
-      state = `<div class="state"><span class="dot"></span>時刻已過，晚一點也沒關係</div>`;
-      cta = `<button class="btn" data-cap="${k}">記錄今天</button>`;
+      html = `<div class="state"><span class="dot"></span>時刻 ${hm(m)} 已過，晚一點也沒關係</div>
+        <div class="clock">${hm(m)}</div><button class="btn" data-cap="${k}">記錄今天</button>`;
     }
-    body.innerHTML = `<div style="display:grid;gap:12px;justify-items:start">${state}<div class="clock">${clock}</div>${cta}
-      <p class="note">每天 09:00–22:00 之間有一個隨機時刻。時刻一到，2 分鐘內拍下眼前和自己，不修飾。</p></div>`;
+    if (!n) html += `<p class="note">每天 09:00–22:00 之間有一個隨機時刻。時刻一到，2 分鐘內拍下眼前和自己。其他時候想拍幾張都可以。</p>`;
+    const mo = $("#tMoment");
+    if (mo.dataset.html !== html) { mo.dataset.html = html; mo.innerHTML = html; }
+
+    const box = $("#tShots");
+    const sig = list.map((p) => p.id).join(",");
+    if (box.dataset.sig === sig) return;
+    box.dataset.sig = sig;
+    if (!n) { box.innerHTML = ""; return; }
+    const last = list[n - 1];
+    const others = list.slice(0, -1).reverse();
+    box.innerHTML = `<button class="polaroid" id="todayPol" data-view="${last.id}">${polaroidHTML(last)}</button>
+      ${others.length ? `<div class="strip" aria-label="今天其他照片">${others.map((p) =>
+        `<button data-view="${p.id}" aria-label="${timeOf(p)} 的照片"><img src="${urlFor(p).main}" alt=""><span>${timeOf(p)}</span></button>`).join("")}</div>` : ""}`;
+    const pol = $("#todayPol");
+    fillCaption(pol, last.caption); wireSwap(pol);
   }
+
+  const timeOf = (p) => { const t = new Date(p.postedAt || 0); return `${pad(t.getHours())}:${pad(t.getMinutes())}`; };
 
   function notifyOnce(k) {
     if (notifyOnce.k === k) return;
@@ -411,31 +445,32 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
     const y = viewMonth.getFullYear(), mo = viewMonth.getMonth();
     $("#calTitle").innerHTML = `回憶 <span>${y} · ${mo + 1}月</span>`;
     const first = new Date(y, mo, 1).getDay();
-    const days = new Date(y, mo + 1, 0).getDate();
+    const dim = new Date(y, mo + 1, 0).getDate();
     const todayK = keyOf(new Date());
     let html = WEEK.map((w) => `<div class="wd">${w}</div>`).join("");
     for (let i = 0; i < first; i++) html += `<div class="day blank"></div>`;
-    let count = 0;
-    for (let d = 1; d <= days; d++) {
+    let count = 0, shots = 0;
+    for (let d = 1; d <= dim; d++) {
       const k = `${y}-${pad(mo + 1)}-${pad(d)}`;
-      const p = posts.get(k);
+      const list = days.get(k);
+      const p = list && list[0];
       const future = k > todayK;
-      if (p) count++;
+      if (p) { count++; shots += list.length; }
       const cls = ["day", p ? "has" : "", k === todayK ? "today" : "", future ? "future" : ""].join(" ");
-      html += `<button class="${cls}" data-k="${k}" ${future ? "disabled" : ""} aria-label="${nice(k)}${p ? "，有記錄" : ""}">
-        ${p ? `<img src="${urlFor(p).main}" alt="">` : ""}<span class="n">${d}</span></button>`;
+      html += `<button class="${cls}" data-k="${k}" ${future ? "disabled" : ""} aria-label="${nice(k)}${p ? `，${list.length} 張` : ""}">
+        ${p ? `<img src="${urlFor(p).main}" alt="">` : ""}<span class="n">${d}</span>${list && list.length > 1 ? `<span class="c">${list.length}</span>` : ""}</button>`;
     }
     $("#cal").innerHTML = html;
-    $("#monthCount").textContent = `這個月記錄了 ${count} 天`;
+    $("#monthCount").textContent = `這個月記錄了 ${count} 天，共 ${shots} 張`;
     const nowM = new Date();
     $("#nextM").disabled = y > nowM.getFullYear() || (y === nowM.getFullYear() && mo >= nowM.getMonth());
   }
 
   function renderStreak() {
     const d = new Date();
-    if (!posts.has(keyOf(d))) d.setDate(d.getDate() - 1);
+    if (!days.has(keyOf(d))) d.setDate(d.getDate() - 1);
     let n = 0;
-    while (posts.has(keyOf(d))) { n++; d.setDate(d.getDate() - 1); }
+    while (days.has(keyOf(d))) { n++; d.setDate(d.getDate() - 1); }
     $("#streak").textContent = n;
   }
   function renderAll() { renderToday(); renderCal(); renderStreak(); }
@@ -655,11 +690,11 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
     rev.urls.forEach(URL.revokeObjectURL);
     rev.key = k; rev.main = main; rev.selfie = selfie;
     rev.urls = [URL.createObjectURL(main)].concat(selfie ? [URL.createObjectURL(selfie)] : []);
-    $("#revTitle").textContent = k === keyOf(new Date()) ? "看一下" : `補記 ${nice(k)}`;
+    const n = (days.get(k) || []).length;
+    $("#revTitle").textContent = (k === keyOf(new Date()) ? "看一下" : `補記 ${nice(k)}`) + (n ? ` · 第 ${n + 1} 張` : "");
     $("#revShot").innerHTML = shotHTML(rev.urls[0], rev.urls[1], "剛拍的照片");
     wireSwap($("#revShot"));
-    const old = posts.get(k);
-    $("#revText").value = old ? old.caption || "" : "";
+    $("#revText").value = "";
     $("#revErr").hidden = true;
     $("#review").hidden = false;
   }
@@ -671,14 +706,14 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
     const now = new Date();
     const moment = momentFor(k);
     const p = {
-      date: k, main: rev.main, selfie: rev.selfie,
+      id: newId(k), date: k, main: rev.main, selfie: rev.selfie,
       caption: $("#revText").value.trim(),
       postedAt: Date.now(), moment,
       late: k === keyOf(now) ? now.getHours() * 60 + now.getMinutes() - moment : null,
     };
     try {
       await store.put(p);
-      posts.set(k, p);
+      byId.set(p.id, p); reindex();
       $("#review").hidden = true;
       renderAll();
       toast("存好了");
@@ -698,30 +733,46 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
     } catch {}
   }
 
-  // ---------- Viewer ----------
+  // ---------- Viewer: every shot of one day ----------
   let viewKey = null;
-  function openViewer(k) {
-    const p = posts.get(k); if (!p) return;
+  function openViewer(k, focusId) {
+    const list = days.get(k);
+    if (!list || !list.length) { $("#viewer").hidden = true; return; }
     viewKey = k;
-    $("#vTitle").textContent = nice(k);
+    $("#vTitle").textContent = `${nice(k)} · ${list.length} 張`;
     const body = $("#vBody");
-    body.innerHTML = `<div class="polaroid" style="cursor:default">${polaroidHTML(p)}</div>`;
-    fillCaption(body, p.caption); wireSwap(body);
-    const del = $("#vDelete");
-    del.textContent = "刪除"; del.className = "btn ghost"; del.dataset.armed = "";
+    body.innerHTML = list.slice().reverse().map((p) => `
+      <article class="vitem" data-id="${p.id}">
+        <div class="polaroid" style="cursor:default">${polaroidHTML(p)}</div>
+        <div class="row">
+          <button class="btn ghost" data-save="${p.id}">存成一張圖</button>
+          <button class="btn ghost" data-del="${p.id}">刪除</button>
+        </div>
+      </article>`).join("");
+    body.querySelectorAll(".vitem").forEach((el) => {
+      const p = byId.get(el.dataset.id);
+      fillCaption(el, p.caption); wireSwap(el);
+    });
     $("#viewer").hidden = false;
+    const target = focusId && body.querySelector(`[data-id="${focusId}"]`);
+    if (target) target.scrollIntoView({ block: "start" }); else $("#viewer .panel").scrollTop = 0;
   }
 
-  $("#vDelete").addEventListener("click", async (e) => {
-    const b = e.currentTarget;
+  $("#vBody").addEventListener("click", async (e) => {
+    const sv = e.target.closest("[data-save]");
+    if (sv) return saveComposite(byId.get(sv.dataset.save));
+    const b = e.target.closest("[data-del]");
+    if (!b) return;
     if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "確定刪除？"; b.className = "btn danger"; return; }
+    const id = b.dataset.del;
     try {
-      await store.del(viewKey);
-      posts.delete(viewKey); forget(viewKey);
-      $("#viewer").hidden = true; renderAll(); toast("刪掉了");
+      await store.del(id);
+      byId.delete(id); forget(id); reindex();
+      renderAll(); toast("刪掉了");
+      openViewer(viewKey);
     } catch { b.textContent = "刪除失敗"; b.dataset.armed = ""; }
   });
-  $("#vRetake").addEventListener("click", () => { $("#viewer").hidden = true; openCamera(viewKey); });
+  $("#vMore").addEventListener("click", () => { $("#viewer").hidden = true; openCamera(viewKey); });
 
   async function loadImg(blob) {
     const url = URL.createObjectURL(blob);
@@ -733,8 +784,8 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
     g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
     g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
   }
-  $("#vSave").addEventListener("click", async () => {
-    const p = posts.get(viewKey); if (!p) return;
+  async function saveComposite(p) {
+    if (!p) return;
     try {
       const main = await loadImg(p.main);
       const W = main.naturalWidth, H = main.naturalHeight;
@@ -748,7 +799,7 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
         g.drawImage(s, m, m, iw, ih); g.restore();
       }
       const out = await toJpeg(c);
-      const file = new File([out], `此刻-${p.date}.jpg`, { type: "image/jpeg" });
+      const file = new File([out], `此刻-${p.date}-${timeOf(p).replace(":", "")}.jpg`, { type: "image/jpeg" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file] }).catch(() => {});
       } else {
@@ -757,20 +808,20 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
         setTimeout(() => URL.revokeObjectURL(a.href), 4000);
       }
     } catch { toast("存圖失敗，再試一次"); }
-  });
+  }
 
   // ---------- Backup ----------
   const blobToData = (b) => new Promise((r, j) => { const f = new FileReader(); f.onload = () => r(f.result); f.onerror = j; f.readAsDataURL(b); });
   const dataToBlob = async (d) => (await fetch(d)).blob();
 
   $("#exportBtn").addEventListener("click", async () => {
-    if (!posts.size) return toast("還沒有記錄可以匯出");
+    if (!byId.size) return toast("還沒有記錄可以匯出");
     toast("整理中…");
     const list = [];
-    for (const p of posts.values()) {
+    for (const p of byId.values()) {
       list.push({ ...p, main: await blobToData(p.main), selfie: p.selfie ? await blobToData(p.selfie) : null });
     }
-    const out = new Blob([JSON.stringify({ app: "ciKe", v: 1, seed, posts: list })], { type: "application/json" });
+    const out = new Blob([JSON.stringify({ app: "ciKe", v: 2, seed, posts: list })], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(out); a.download = `此刻備份-${keyOf(new Date())}.json`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
@@ -785,11 +836,11 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
       if (data.app !== "ciKe" || !Array.isArray(data.posts)) throw 0;
       let n = 0;
       for (const p of data.posts) {
-        const rec = { ...p, main: await dataToBlob(p.main), selfie: p.selfie ? await dataToBlob(p.selfie) : null };
+        const rec = { ...p, id: p.id || `${p.date}-${p.postedAt || 0}`, main: await dataToBlob(p.main), selfie: p.selfie ? await dataToBlob(p.selfie) : null };
         await store.put(rec); n++;
       }
       await load();
-      toast(`匯入了 ${n} 天`);
+      toast(`匯入了 ${n} 張`);
     } catch { toast("這個檔案不是此刻的備份"); }
   });
 
@@ -802,8 +853,11 @@ textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px;
     const day = e.target.closest(".day[data-k]");
     if (day && !day.disabled) {
       const k = day.dataset.k;
-      posts.has(k) ? openViewer(k) : openCamera(k);
+      days.has(k) ? openViewer(k) : openCamera(k);
+      return;
     }
+    const v = e.target.closest("[data-view]");
+    if (v) { const p = byId.get(v.dataset.view); if (p) openViewer(p.date, p.id); }
   });
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;

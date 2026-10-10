@@ -1,5 +1,5 @@
 // Offline shell: cache the app files, network-first so updates arrive when online.
-const CACHE = "ciKe-v1";
+const CACHE = "ciKe-v2";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "icon-180.png"];
 
 self.addEventListener("install", (e) => {

@@ -1,7 +1,7 @@
 {
   "name": "此刻日記",
   "short_name": "此刻",
-  "description": "每天一個隨機時刻，用前後鏡頭各拍一張，記錄真實的生活。",
+  "description": "每天一個隨機時刻，用前後鏡頭同時記下眼前和自己。",
   "lang": "zh-Hant",
   "start_url": "./",
   "scope": "./",
