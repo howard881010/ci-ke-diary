@@ -1,0 +1,831 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#e8ebef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="此刻">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>此刻日記</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=LXGW+WenKai+TC&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: one phone-width column. Today's moment card on top, month calendar of memories below; full-screen camera and sheets on top. */
+:root {
+  --bg: #e8ebef;
+  --surface: #ffffff;
+  --ink: #16191d;
+  --muted: #5d6670;
+  --line: #d3d8de;
+  --accent: #2d4fe0;
+  --accent-ink: #ffffff;
+  --live: #e2482f;
+  --ok: #1f8a55;
+  --frame: #fbfbf8;
+  --shade: rgba(10, 12, 16, .55);
+  --f-display: "Bricolage Grotesque", "Noto Sans TC", system-ui, sans-serif;
+  --f-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --f-hand: "LXGW WenKai TC", "Kaiti TC", "STKaiti", serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121418; --surface: #1c1f25; --ink: #eef0f3; --muted: #9aa3ad; --line: #2c3139;
+    --accent: #7d95ff; --accent-ink: #0d1020; --live: #ff6a52; --ok: #4cc58a; --frame: #24272d;
+    --shade: rgba(0, 0, 0, .7); color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+img { max-width: 100%; }
+.wrap { max-width: 480px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 48px; display: grid; gap: 22px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { font-family: var(--f-display); font-weight: 800; font-size: 22px; letter-spacing: -.01em; display: flex; align-items: baseline; gap: 8px; }
+.brand small { font-family: var(--f-body); font-weight: 500; font-size: 13px; color: var(--muted); }
+.streak { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.streak b { font-family: var(--f-display); font-size: 20px; color: var(--ink); }
+
+.today { background: var(--surface); border-radius: 18px; padding: 20px; display: grid; gap: 14px; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; color: var(--muted); }
+.clock { font-family: var(--f-display); font-weight: 800; font-size: 56px; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.state { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.state.live { color: var(--live); }
+.state.live .dot { background: var(--live); animation: pulse 1s ease-in-out infinite; }
+.state.done { color: var(--ok); }
+.state.done .dot { background: var(--ok); }
+@keyframes pulse { 50% { transform: scale(1.6); opacity: .4; } }
+.btn { border: 0; border-radius: 999px; padding: 13px 22px; font-weight: 700; background: var(--accent); color: var(--accent-ink); display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.danger { background: var(--live); color: #fff; }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+
+.polaroid { background: var(--frame); padding: 10px 10px 14px; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.08); display: grid; gap: 10px; cursor: pointer; border: 0; text-align: left; width: 100%; }
+.shot { position: relative; aspect-ratio: 3 / 4; max-width: 100%; background: #000; overflow: hidden; border-radius: 2px; }
+.shot > img.main { width: 100%; height: 100%; object-fit: cover; display: block; }
+.inset { position: absolute; top: 10px; left: 10px; width: 30%; aspect-ratio: 3 / 4; border-radius: 10px; overflow: hidden; border: 2px solid #000; background: #000; padding: 0; }
+.inset img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.caption { font-family: var(--f-hand); font-size: 19px; line-height: 1.4; padding-inline: 4px; overflow-wrap: anywhere; }
+.meta { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--muted); padding-inline: 4px; font-variant-numeric: tabular-nums; }
+.chip { font-size: 11px; font-weight: 700; border-radius: 999px; padding: 1px 8px; border: 1px solid currentColor; white-space: nowrap; }
+.chip.on { color: var(--ok); }
+.chip.late { color: var(--muted); }
+
+.cal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cal-head h2 { font-size: 17px; margin: 0; font-weight: 700; }
+.cal-head h2 span { font-family: var(--f-display); font-weight: 600; color: var(--muted); font-size: 14px; margin-left: 6px; }
+.navs { display: flex; gap: 6px; }
+.icon-btn { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center; font-size: 16px; padding: 0; }
+.icon-btn:disabled { opacity: .4; cursor: default; }
+.grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.wd { font-size: 11px; color: var(--muted); text-align: center; letter-spacing: .05em; }
+.day { aspect-ratio: 3 / 4; border-radius: 8px; border: 0; background: var(--surface); position: relative; overflow: hidden; padding: 0; font-variant-numeric: tabular-nums; }
+.day img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.day .n { position: absolute; left: 5px; top: 3px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.day.has .n { color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.7); font-weight: 700; }
+.day.today { box-shadow: inset 0 0 0 2px var(--accent); }
+.day.future { background: transparent; border: 1px dashed var(--line); cursor: default; }
+.day.blank { visibility: hidden; }
+.cal-foot { font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.tools { display: flex; gap: 10px; flex-wrap: wrap; }
+.tools .btn { padding: 9px 16px; font-size: 13px; }
+.empty { border: 1px dashed var(--line); border-radius: 14px; padding: 18px; font-size: 14px; color: var(--muted); }
+
+/* Camera: always dark, it is a viewfinder */
+.cam { position: fixed; inset: 0; background: #000; color: #fff; z-index: 20; display: grid; grid-template-rows: auto 1fr auto; }
+.cam-top { display: flex; justify-content: space-between; align-items: center; padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px; gap: 10px; }
+.cam-top .step { font-weight: 700; font-size: 15px; text-align: center; flex: 1; }
+.cam-btn { width: 40px; height: 40px; border-radius: 50%; border: 0; background: rgba(255,255,255,.14); color: #fff; font-size: 18px; display: grid; place-items: center; padding: 0; }
+.finder { position: relative; overflow: hidden; display: grid; place-items: center; }
+.finder .frame { position: relative; height: 100%; max-height: 100%; aspect-ratio: 3 / 4; max-width: 100%; overflow: hidden; border-radius: 18px; background: #111; }
+.finder video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.finder video.mirror { transform: scaleX(-1); }
+.finder .inset { border-color: #000; }
+.count { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--f-display); font-weight: 800; font-size: 120px; color: #fff; text-shadow: 0 4px 30px rgba(0,0,0,.5); pointer-events: none; }
+.flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity .25s; }
+.flash.on { opacity: .85; transition: none; }
+.cam-msg { position: absolute; inset: 16px; display: grid; place-items: center; text-align: center; font-size: 15px; line-height: 1.7; }
+.cam-bottom { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 18px 24px calc(22px + env(safe-area-inset-bottom, 0px)); gap: 12px; }
+.shutter { width: 78px; height: 78px; border-radius: 50%; border: 5px solid #fff; background: transparent; padding: 0; display: grid; place-items: center; }
+.shutter::after { content: ""; width: 60px; height: 60px; border-radius: 50%; background: #fff; transition: transform .1s; }
+.shutter:active::after { transform: scale(.88); }
+.shutter:disabled { opacity: .4; }
+.cam-hint { font-size: 12px; color: rgba(255,255,255,.7); text-align: center; }
+.cam-bottom .right { justify-self: end; }
+.cam-bottom .left { justify-self: start; }
+
+/* Sheets */
+.sheet { position: fixed; inset: 0; background: var(--shade); display: grid; align-items: end; z-index: 30; }
+.panel { background: var(--bg); width: 100%; max-width: 480px; margin: 0 auto; max-height: 100%; overflow-y: auto; border-radius: 20px 20px 0 0; padding: 18px 16px calc(24px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 16px; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.panel-head h3 { margin: 0; font-size: 17px; }
+textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 12px; font-family: var(--f-hand); font-size: 18px; }
+.row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; align-items: center; }
+.row .grow { flex: 1; }
+.err { color: var(--live); font-size: 13px; }
+.review .shot { max-height: 56vh; aspect-ratio: 3 / 4; margin: 0 auto; width: auto; height: 56vh; }
+.viewer .shot { aspect-ratio: 3 / 4; }
+.fallback-in { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 999px; font-size: 14px; z-index: 40; max-width: calc(100% - 32px); text-align: center; }
+@media (prefers-reduced-motion: reduce) { .state.live .dot { animation: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">此刻 <small>每天一張，真實的生活</small></div>
+    <div class="streak" title="連續記錄天數"><b id="streak">0</b> 天連續</div>
+  </header>
+
+  <section class="today" aria-live="polite">
+    <div class="eyebrow" id="todayLabel">今天</div>
+    <div id="todayBody"><div class="clock">--:--</div></div>
+  </section>
+
+  <section style="display:grid;gap:12px">
+    <div class="cal-head">
+      <h2 id="calTitle">回憶</h2>
+      <div class="navs">
+        <button class="icon-btn" id="prevM" aria-label="上個月">‹</button>
+        <button class="icon-btn" id="nextM" aria-label="下個月">›</button>
+      </div>
+    </div>
+    <div class="grid" id="cal"></div>
+    <div class="cal-foot"><span id="monthCount"></span><span>點空白的日子可以補記</span></div>
+  </section>
+
+  <section style="display:grid;gap:10px">
+    <div class="tools">
+      <button class="btn ghost" id="exportBtn">匯出備份</button>
+      <button class="btn ghost" id="importBtn">匯入備份</button>
+      <input type="file" accept="application/json,.json" id="importIn" class="fallback-in">
+    </div>
+    <p class="note" id="storeNote">照片只存在這台裝置的瀏覽器裡。換手機或清除瀏覽器資料前，記得先匯出備份。</p>
+  </section>
+</div>
+
+<!-- Camera -->
+<div class="cam" id="cam" hidden>
+  <div class="cam-top">
+    <button class="cam-btn" id="camClose" aria-label="關閉相機">✕</button>
+    <div class="step" id="camStep">1 / 2 · 拍眼前</div>
+    <button class="cam-btn" id="camOrder" aria-label="先拍自己">⇄</button>
+  </div>
+  <div class="finder">
+    <div class="frame" id="frame">
+      <video id="video" playsinline muted autoplay></video>
+      <span class="inset" id="camInset" hidden><img alt="剛拍的照片"></span>
+      <div class="count" id="count" hidden></div>
+      <div class="flash" id="flash"></div>
+      <div class="cam-msg" id="camMsg" hidden></div>
+    </div>
+  </div>
+  <div class="cam-bottom">
+    <div class="left cam-hint" id="camHint">按下快門後<br>會自動換鏡頭</div>
+    <button class="shutter" id="shutter" aria-label="拍照"></button>
+    <div class="right"><button class="cam-btn" id="camFile" aria-label="從相簿選">🖼</button></div>
+  </div>
+  <input type="file" accept="image/*" id="camFileIn" class="fallback-in">
+</div>
+
+<!-- Review -->
+<div class="sheet" id="review" hidden>
+  <div class="panel review">
+    <div class="panel-head">
+      <h3 id="revTitle">看一下</h3>
+      <button class="icon-btn" data-close aria-label="關閉">✕</button>
+    </div>
+    <div id="revShot"></div>
+    <textarea id="revText" maxlength="300" placeholder="現在在做什麼？"></textarea>
+    <div class="err" id="revErr" hidden></div>
+    <div class="row">
+      <button class="btn ghost" id="revRetake">重拍</button>
+      <button class="btn" id="revPost">發佈</button>
+    </div>
+  </div>
+</div>
+
+<!-- Viewer -->
+<div class="sheet" id="viewer" hidden>
+  <div class="panel viewer">
+    <div class="panel-head">
+      <h3 id="vTitle"></h3>
+      <button class="icon-btn" data-close aria-label="關閉">✕</button>
+    </div>
+    <div id="vBody"></div>
+    <div class="row">
+      <button class="btn ghost grow" id="vSave">存成一張圖</button>
+      <button class="btn ghost" id="vRetake">重拍</button>
+      <button class="btn ghost" id="vDelete">刪除</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
+  const WINDOW_MIN = 2;
+  const START = 9 * 60, END = 22 * 60;
+  const MAX_H = 1600;
+
+  const pad = (n) => String(n).padStart(2, "0");
+  const keyOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const dateOf = (k) => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
+  const hm = (min) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
+  const nice = (k) => { const d = dateOf(k); return `${d.getMonth() + 1}月${d.getDate()}日 週${WEEK[d.getDay()]}`; };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function toast(msg) {
+    const t = $("#toast"); t.textContent = msg; t.hidden = false;
+    clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2600);
+  }
+
+  // ---------- Seed (per-device, so each phone gets its own daily time) ----------
+  let seed = "";
+  try { seed = localStorage.getItem("ciKe.seed") || ""; if (!seed) { seed = Math.random().toString(36).slice(2); localStorage.setItem("ciKe.seed", seed); } } catch {}
+  function momentFor(k) {
+    let h = 2166136261;
+    const s = k + "|" + seed;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return START + ((h >>> 0) % (END - START));
+  }
+
+  // ---------- IndexedDB ----------
+  const store = (() => {
+    let dbp = null;
+    const open = () => dbp || (dbp = new Promise((res, rej) => {
+      const r = indexedDB.open("ciKe", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("posts", { keyPath: "date" });
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    }));
+    const tx = async (mode, fn) => {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const t = db.transaction("posts", mode);
+        const out = fn(t.objectStore("posts"));
+        t.oncomplete = () => res(out && out.result !== undefined ? out.result : undefined);
+        t.onerror = () => rej(t.error);
+        t.onabort = () => rej(t.error);
+      });
+    };
+    return {
+      all: () => tx("readonly", (s) => s.getAll()),
+      put: (p) => tx("readwrite", (s) => s.put(p)),
+      del: (k) => tx("readwrite", (s) => s.delete(k)),
+    };
+  })();
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+  let posts = new Map();
+  const urls = new Map(); // date -> {main, selfie}
+  function urlFor(p) {
+    let u = urls.get(p.date);
+    if (!u || u.src !== p) {
+      if (u) { URL.revokeObjectURL(u.main); if (u.selfie) URL.revokeObjectURL(u.selfie); }
+      u = { src: p, main: URL.createObjectURL(p.main), selfie: p.selfie ? URL.createObjectURL(p.selfie) : null };
+      urls.set(p.date, u);
+    }
+    return u;
+  }
+  function forget(k) {
+    const u = urls.get(k);
+    if (u) { URL.revokeObjectURL(u.main); if (u.selfie) URL.revokeObjectURL(u.selfie); urls.delete(k); }
+  }
+  async function load() {
+    try {
+      const list = await store.all();
+      posts = new Map(list.map((p) => [p.date, p]));
+    } catch {
+      $("#storeNote").textContent = "這個瀏覽器不能存資料（可能是無痕模式）。照片會在關掉頁面後消失。";
+    }
+    renderAll();
+  }
+
+  // ---------- Rendering ----------
+  function statusLabel(p) {
+    if (p.late == null) return `<span class="chip late">補記</span>`;
+    if (p.late < 0) return `<span class="chip late">提前</span>`;
+    if (p.late <= WINDOW_MIN) return `<span class="chip on">準時</span>`;
+    const l = p.late >= 60 ? `${Math.floor(p.late / 60)} 小時` : `${p.late} 分鐘`;
+    return `<span class="chip late">晚了 ${l}</span>`;
+  }
+
+  function shotHTML(mainSrc, selfieSrc, alt) {
+    return `<div class="shot"><img class="main" src="${mainSrc}" alt="${alt}">
+      ${selfieSrc ? `<span class="inset" role="button" tabindex="0" aria-label="交換大小圖"><img src="${selfieSrc}" alt="自拍"></span>` : ""}</div>`;
+  }
+
+  function polaroidHTML(p) {
+    const u = urlFor(p);
+    const t = p.postedAt ? new Date(p.postedAt) : null;
+    return `${shotHTML(u.main, u.selfie, nice(p.date) + " 的照片")}
+      ${p.caption ? `<div class="caption"></div>` : ""}
+      <div class="meta"><span>${t ? `${pad(t.getHours())}:${pad(t.getMinutes())} 發佈` : ""}</span>${statusLabel(p)}</div>`;
+  }
+
+  function wireSwap(root) {
+    const inset = root.querySelector(".shot .inset");
+    if (!inset) return;
+    const swap = (e) => {
+      e.stopPropagation();
+      const a = root.querySelector("img.main"), b = inset.querySelector("img");
+      [a.src, b.src] = [b.src, a.src];
+    };
+    inset.addEventListener("click", swap);
+    inset.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); swap(e); } });
+  }
+  function fillCaption(root, text) { const c = root.querySelector(".caption"); if (c) c.textContent = text; }
+
+  function renderToday() {
+    const now = new Date();
+    const k = keyOf(now);
+    $("#todayLabel").textContent = `今天 · ${nice(k)}`;
+    const body = $("#todayBody");
+    const p = posts.get(k);
+    if (p) {
+      const sig = k + p.postedAt;
+      if (body.dataset.shown === sig) return;
+      body.dataset.shown = sig;
+      body.innerHTML = `<div style="display:grid;gap:12px">
+        <div class="state done"><span class="dot"></span>今天記錄好了</div>
+        <button class="polaroid" id="todayPol">${polaroidHTML(p)}</button></div>`;
+      const pol = $("#todayPol");
+      fillCaption(pol, p.caption); wireSwap(pol);
+      pol.addEventListener("click", () => openViewer(k));
+      return;
+    }
+    body.dataset.shown = "";
+    const m = momentFor(k);
+    const secLeft = m * 60 - (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds());
+    let state, clock, cta;
+    if (secLeft > 0) {
+      const h = Math.floor(secLeft / 3600), mi = Math.floor(secLeft % 3600 / 60), s = secLeft % 60;
+      clock = `${h ? h + ":" : ""}${pad(mi)}:${pad(s)}`;
+      state = `<div class="state"><span class="dot"></span>今天的時刻在 ${hm(m)}，還沒到</div>`;
+      cta = `<button class="btn ghost" data-cap="${k}">先拍也可以</button>`;
+    } else if (-secLeft < WINDOW_MIN * 60) {
+      const left = WINDOW_MIN * 60 + secLeft;
+      clock = `${pad(Math.floor(left / 60))}:${pad(left % 60)}`;
+      state = `<div class="state live"><span class="dot"></span>就是現在！停下來拍一張</div>`;
+      cta = `<button class="btn" data-cap="${k}">打開相機</button>`;
+      notifyOnce(k);
+    } else {
+      clock = hm(m);
+      state = `<div class="state"><span class="dot"></span>時刻已過，晚一點也沒關係</div>`;
+      cta = `<button class="btn" data-cap="${k}">記錄今天</button>`;
+    }
+    body.innerHTML = `<div style="display:grid;gap:12px;justify-items:start">${state}<div class="clock">${clock}</div>${cta}
+      <p class="note">每天 09:00–22:00 之間有一個隨機時刻。時刻一到，2 分鐘內拍下眼前和自己，不修飾。</p></div>`;
+  }
+
+  function notifyOnce(k) {
+    if (notifyOnce.k === k) return;
+    notifyOnce.k = k;
+    try {
+      if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
+        new Notification("此刻", { body: "就是現在！2 分鐘內拍一張", icon: "icon-192.png" });
+      }
+    } catch {}
+  }
+
+  let viewMonth = new Date(); viewMonth.setDate(1);
+  function renderCal() {
+    const y = viewMonth.getFullYear(), mo = viewMonth.getMonth();
+    $("#calTitle").innerHTML = `回憶 <span>${y} · ${mo + 1}月</span>`;
+    const first = new Date(y, mo, 1).getDay();
+    const days = new Date(y, mo + 1, 0).getDate();
+    const todayK = keyOf(new Date());
+    let html = WEEK.map((w) => `<div class="wd">${w}</div>`).join("");
+    for (let i = 0; i < first; i++) html += `<div class="day blank"></div>`;
+    let count = 0;
+    for (let d = 1; d <= days; d++) {
+      const k = `${y}-${pad(mo + 1)}-${pad(d)}`;
+      const p = posts.get(k);
+      const future = k > todayK;
+      if (p) count++;
+      const cls = ["day", p ? "has" : "", k === todayK ? "today" : "", future ? "future" : ""].join(" ");
+      html += `<button class="${cls}" data-k="${k}" ${future ? "disabled" : ""} aria-label="${nice(k)}${p ? "，有記錄" : ""}">
+        ${p ? `<img src="${urlFor(p).main}" alt="">` : ""}<span class="n">${d}</span></button>`;
+    }
+    $("#cal").innerHTML = html;
+    $("#monthCount").textContent = `這個月記錄了 ${count} 天`;
+    const nowM = new Date();
+    $("#nextM").disabled = y > nowM.getFullYear() || (y === nowM.getFullYear() && mo >= nowM.getMonth());
+  }
+
+  function renderStreak() {
+    const d = new Date();
+    if (!posts.has(keyOf(d))) d.setDate(d.getDate() - 1);
+    let n = 0;
+    while (posts.has(keyOf(d))) { n++; d.setDate(d.getDate() - 1); }
+    $("#streak").textContent = n;
+  }
+  function renderAll() { renderToday(); renderCal(); renderStreak(); }
+
+  // ---------- Camera ----------
+  const cam = {
+    key: null, stream: null, order: ["environment", "user"], step: 0,
+    shots: [], busy: false, token: 0,
+  };
+  const video = $("#video");
+
+  function stopStream() {
+    if (cam.stream) { cam.stream.getTracks().forEach((t) => t.stop()); cam.stream = null; }
+    video.srcObject = null;
+  }
+
+  async function startStream(facing) {
+    stopStream();
+    const tries = [
+      { video: { facingMode: { exact: facing }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false },
+      { video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false },
+      { video: true, audio: false },
+    ];
+    let lastErr;
+    for (const c of tries) {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia(c);
+        cam.stream = s;
+        video.srcObject = s;
+        video.classList.toggle("mirror", facing === "user");
+        await video.play().catch(() => {});
+        await waitFrame();
+        return true;
+      } catch (e) {
+        lastErr = e;
+        if (e && (e.name === "NotAllowedError" || e.name === "SecurityError")) break;
+      }
+    }
+    throw lastErr;
+  }
+
+  function waitFrame() {
+    return new Promise((res) => {
+      if (video.videoWidth) return res();
+      const done = () => { video.removeEventListener("loadedmetadata", done); res(); };
+      video.addEventListener("loadedmetadata", done);
+      setTimeout(done, 3000);
+    });
+  }
+
+  function grab(mirror) {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return Promise.reject(new Error("no frame"));
+    // center-crop to 3:4 portrait
+    let sw = vw, sh = vh;
+    if (vw / vh > 3 / 4) sw = Math.round(vh * 3 / 4); else sh = Math.round(vw * 4 / 3);
+    const sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+    const scale = Math.min(1, MAX_H / sh);
+    const c = document.createElement("canvas");
+    c.width = Math.round(sw * scale); c.height = Math.round(sh * scale);
+    const g = c.getContext("2d");
+    if (mirror) { g.translate(c.width, 0); g.scale(-1, 1); }
+    g.drawImage(video, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    return toJpeg(c);
+  }
+
+  const toJpeg = (c) => new Promise((r, j) => c.toBlob((b) => (b ? r(b) : j(new Error("encode"))), "image/jpeg", 0.88));
+
+  async function fileToBlob(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image(); img.src = url; await img.decode();
+      let sw = img.naturalWidth, sh = img.naturalHeight;
+      if (sw / sh > 3 / 4) sw = Math.round(sh * 3 / 4); else sh = Math.round(sw * 4 / 3);
+      const sx = (img.naturalWidth - sw) / 2, sy = (img.naturalHeight - sh) / 2;
+      const scale = Math.min(1, MAX_H / sh);
+      const c = document.createElement("canvas");
+      c.width = Math.round(sw * scale); c.height = Math.round(sh * scale);
+      c.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+      return await toJpeg(c);
+    } finally { URL.revokeObjectURL(url); }
+  }
+
+  function camLabel() {
+    const which = cam.order[cam.step] === "environment" ? "拍眼前" : "拍自己";
+    $("#camStep").textContent = `${cam.step + 1} / 2 · ${which}`;
+    $("#camOrder").hidden = cam.step !== 0;
+    $("#camHint").innerHTML = cam.step === 0 ? "按下快門後<br>會自動換鏡頭" : "3 秒後自動拍<br>或直接按快門";
+  }
+
+  function camMessage(html) { const m = $("#camMsg"); m.hidden = !html; m.innerHTML = html || ""; }
+
+  async function openCamera(k) {
+    cam.key = k; cam.step = 0; cam.shots = []; cam.busy = false;
+    const token = ++cam.token;
+    $("#camInset").hidden = true; $("#count").hidden = true; camMessage("");
+    $("#cam").hidden = false;
+    camLabel();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      camMessage("這個瀏覽器不能直接開相機。<br>請用 Safari 或 Chrome 開啟（網址要是 https）。<br><br>也可以按右下角從相簿選照片。");
+      return;
+    }
+    $("#shutter").disabled = true;
+    try {
+      await startStream(cam.order[0]);
+      if (token !== cam.token) return stopStream();
+      $("#shutter").disabled = false;
+    } catch (e) {
+      if (token !== cam.token) return;
+      camMessage(e && e.name === "NotAllowedError"
+        ? "相機權限被拒絕了。<br>請到瀏覽器設定允許這個網站使用相機，再重新打開。<br><br>或按右下角從相簿選照片。"
+        : "打不開相機。<br>可能被其他 App 佔用，關掉後再試一次。<br><br>或按右下角從相簿選照片。");
+    }
+  }
+
+  function closeCamera() {
+    cam.token++;
+    stopStream();
+    $("#cam").hidden = true;
+  }
+
+  async function flash() { const f = $("#flash"); f.classList.add("on"); await sleep(60); f.classList.remove("on"); }
+
+  async function takeShot(blobOverride) {
+    if (cam.busy) return;
+    cam.busy = true;
+    const token = cam.token;
+    clearInterval(cam.countTimer); $("#count").hidden = true;
+    try {
+      const facing = cam.order[cam.step];
+      const b = blobOverride || await grab(facing === "user");
+      if (!blobOverride) flash();
+      cam.shots[cam.step] = { facing, blob: b };
+      if (cam.step === 0) {
+        cam.step = 1;
+        const ins = $("#camInset");
+        const img = ins.querySelector("img");
+        if (img.src) URL.revokeObjectURL(img.src);
+        img.src = URL.createObjectURL(b);
+        ins.hidden = false;
+        camLabel();
+        $("#shutter").disabled = true;
+        camMessage("");
+        try {
+          await startStream(cam.order[1]);
+        } catch {
+          if (token !== cam.token) return;
+          camMessage("第二個鏡頭打不開。<br>可以按右下角從相簿選，或按快門跳過。");
+          $("#shutter").disabled = false;
+          cam.skipSecond = true;
+          return;
+        }
+        if (token !== cam.token) return stopStream();
+        $("#shutter").disabled = false;
+        cam.skipSecond = false;
+        startCountdown(token);
+      } else {
+        finishCamera();
+      }
+    } catch {
+      toast("沒拍到，再按一次快門");
+    } finally {
+      cam.busy = false;
+    }
+  }
+
+  function startCountdown(token) {
+    let n = 3;
+    const el = $("#count");
+    el.textContent = n; el.hidden = false;
+    clearInterval(cam.countTimer);
+    cam.countTimer = setInterval(() => {
+      if (token !== cam.token || cam.step !== 1) { clearInterval(cam.countTimer); el.hidden = true; return; }
+      n--;
+      if (n <= 0) { clearInterval(cam.countTimer); el.hidden = true; takeShot(); }
+      else el.textContent = n;
+    }, 1000);
+  }
+
+  function finishCamera() {
+    const back = cam.shots.find((s) => s && s.facing === "environment");
+    const front = cam.shots.find((s) => s && s.facing === "user");
+    const main = (back || front).blob;
+    const selfie = back && front ? front.blob : null;
+    closeCamera();
+    openReview(cam.key, main, selfie);
+  }
+
+  $("#shutter").addEventListener("click", () => {
+    if (cam.step === 1 && cam.skipSecond) return finishCamera();
+    takeShot();
+  });
+  $("#camClose").addEventListener("click", closeCamera);
+  $("#camOrder").addEventListener("click", async () => {
+    if (cam.step !== 0 || cam.busy) return;
+    cam.order.reverse();
+    camLabel();
+    $("#shutter").disabled = true;
+    try { await startStream(cam.order[0]); } catch { camMessage("這個鏡頭打不開。"); }
+    $("#shutter").disabled = false;
+  });
+  $("#camFile").addEventListener("click", () => $("#camFileIn").click());
+  $("#camFileIn").addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    try { await takeShot(await fileToBlob(f)); }
+    catch { toast("這張照片讀不出來，換一張試試"); }
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && !$("#cam").hidden) closeCamera();
+  });
+
+  // ---------- Review ----------
+  const rev = { key: null, main: null, selfie: null, urls: [] };
+  function openReview(k, main, selfie) {
+    rev.urls.forEach(URL.revokeObjectURL);
+    rev.key = k; rev.main = main; rev.selfie = selfie;
+    rev.urls = [URL.createObjectURL(main)].concat(selfie ? [URL.createObjectURL(selfie)] : []);
+    $("#revTitle").textContent = k === keyOf(new Date()) ? "看一下" : `補記 ${nice(k)}`;
+    $("#revShot").innerHTML = shotHTML(rev.urls[0], rev.urls[1], "剛拍的照片");
+    wireSwap($("#revShot"));
+    const old = posts.get(k);
+    $("#revText").value = old ? old.caption || "" : "";
+    $("#revErr").hidden = true;
+    $("#review").hidden = false;
+  }
+  $("#revRetake").addEventListener("click", () => { $("#review").hidden = true; openCamera(rev.key); });
+  $("#revPost").addEventListener("click", async () => {
+    const btn = $("#revPost");
+    btn.disabled = true;
+    const k = rev.key;
+    const now = new Date();
+    const moment = momentFor(k);
+    const p = {
+      date: k, main: rev.main, selfie: rev.selfie,
+      caption: $("#revText").value.trim(),
+      postedAt: Date.now(), moment,
+      late: k === keyOf(now) ? now.getHours() * 60 + now.getMinutes() - moment : null,
+    };
+    try {
+      await store.put(p);
+      posts.set(k, p);
+      $("#review").hidden = true;
+      renderAll();
+      toast("存好了");
+      maybeAskNotify();
+    } catch {
+      $("#revErr").textContent = "沒有存成功。手機空間可能不夠，清一點空間再按一次發佈。";
+      $("#revErr").hidden = false;
+    } finally { btn.disabled = false; }
+  });
+
+  function maybeAskNotify() {
+    try {
+      if ("Notification" in window && Notification.permission === "default" && !localStorage.getItem("ciKe.asked")) {
+        localStorage.setItem("ciKe.asked", "1");
+        Notification.requestPermission().catch(() => {});
+      }
+    } catch {}
+  }
+
+  // ---------- Viewer ----------
+  let viewKey = null;
+  function openViewer(k) {
+    const p = posts.get(k); if (!p) return;
+    viewKey = k;
+    $("#vTitle").textContent = nice(k);
+    const body = $("#vBody");
+    body.innerHTML = `<div class="polaroid" style="cursor:default">${polaroidHTML(p)}</div>`;
+    fillCaption(body, p.caption); wireSwap(body);
+    const del = $("#vDelete");
+    del.textContent = "刪除"; del.className = "btn ghost"; del.dataset.armed = "";
+    $("#viewer").hidden = false;
+  }
+
+  $("#vDelete").addEventListener("click", async (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "確定刪除？"; b.className = "btn danger"; return; }
+    try {
+      await store.del(viewKey);
+      posts.delete(viewKey); forget(viewKey);
+      $("#viewer").hidden = true; renderAll(); toast("刪掉了");
+    } catch { b.textContent = "刪除失敗"; b.dataset.armed = ""; }
+  });
+  $("#vRetake").addEventListener("click", () => { $("#viewer").hidden = true; openCamera(viewKey); });
+
+  async function loadImg(blob) {
+    const url = URL.createObjectURL(blob);
+    const img = new Image(); img.src = url; await img.decode();
+    URL.revokeObjectURL(url);
+    return img;
+  }
+  function roundRect(g, x, y, w, h, r) {
+    g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+  }
+  $("#vSave").addEventListener("click", async () => {
+    const p = posts.get(viewKey); if (!p) return;
+    try {
+      const main = await loadImg(p.main);
+      const W = main.naturalWidth, H = main.naturalHeight;
+      const c = document.createElement("canvas"); c.width = W; c.height = H;
+      const g = c.getContext("2d");
+      g.drawImage(main, 0, 0, W, H);
+      if (p.selfie) {
+        const s = await loadImg(p.selfie);
+        const iw = Math.round(W * 0.3), ih = Math.round(iw * 4 / 3), m = Math.round(W * 0.03), r = Math.round(W * 0.03);
+        g.save(); roundRect(g, m, m, iw, ih, r); g.lineWidth = Math.max(3, W / 200); g.strokeStyle = "#000"; g.stroke(); g.clip();
+        g.drawImage(s, m, m, iw, ih); g.restore();
+      }
+      const out = await toJpeg(c);
+      const file = new File([out], `此刻-${p.date}.jpg`, { type: "image/jpeg" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] }).catch(() => {});
+      } else {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(out); a.download = file.name; a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      }
+    } catch { toast("存圖失敗，再試一次"); }
+  });
+
+  // ---------- Backup ----------
+  const blobToData = (b) => new Promise((r, j) => { const f = new FileReader(); f.onload = () => r(f.result); f.onerror = j; f.readAsDataURL(b); });
+  const dataToBlob = async (d) => (await fetch(d)).blob();
+
+  $("#exportBtn").addEventListener("click", async () => {
+    if (!posts.size) return toast("還沒有記錄可以匯出");
+    toast("整理中…");
+    const list = [];
+    for (const p of posts.values()) {
+      list.push({ ...p, main: await blobToData(p.main), selfie: p.selfie ? await blobToData(p.selfie) : null });
+    }
+    const out = new Blob([JSON.stringify({ app: "ciKe", v: 1, seed, posts: list })], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(out); a.download = `此刻備份-${keyOf(new Date())}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  });
+  $("#importBtn").addEventListener("click", () => $("#importIn").click());
+  $("#importIn").addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (data.app !== "ciKe" || !Array.isArray(data.posts)) throw 0;
+      let n = 0;
+      for (const p of data.posts) {
+        const rec = { ...p, main: await dataToBlob(p.main), selfie: p.selfie ? await dataToBlob(p.selfie) : null };
+        await store.put(rec); n++;
+      }
+      await load();
+      toast(`匯入了 ${n} 天`);
+    } catch { toast("這個檔案不是此刻的備份"); }
+  });
+
+  // ---------- Events ----------
+  document.addEventListener("click", (e) => {
+    const capBtn = e.target.closest("[data-cap]");
+    if (capBtn) return openCamera(capBtn.dataset.cap);
+    if (e.target.closest("[data-close]")) { e.target.closest(".sheet").hidden = true; return; }
+    if (e.target.classList.contains("sheet")) { e.target.hidden = true; return; }
+    const day = e.target.closest(".day[data-k]");
+    if (day && !day.disabled) {
+      const k = day.dataset.k;
+      posts.has(k) ? openViewer(k) : openCamera(k);
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!$("#cam").hidden) closeCamera();
+    document.querySelectorAll(".sheet").forEach((s) => (s.hidden = true));
+  });
+  $("#prevM").addEventListener("click", () => { viewMonth.setMonth(viewMonth.getMonth() - 1); renderCal(); });
+  $("#nextM").addEventListener("click", () => { viewMonth.setMonth(viewMonth.getMonth() + 1); renderCal(); });
+
+  let lastDay = keyOf(new Date());
+  setInterval(() => {
+    const k = keyOf(new Date());
+    if (k !== lastDay) { lastDay = k; renderAll(); } else renderToday();
+  }, 1000);
+
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+
+  renderCal();
+  load();
+})();
+</script>
+</body>
+</html>
